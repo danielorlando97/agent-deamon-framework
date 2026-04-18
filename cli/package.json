@@ -1,0 +1,43 @@
+{
+  "name": "@actualidad/adf-cli",
+  "version": "0.0.1",
+  "description": "CLI for Agent Daemon Framework (adf): run daemon, web UI, and console chat against the local HTTP API.",
+  "type": "module",
+  "bin": {
+    "adf": "./bin/adf.mjs",
+    "agent-daemon-tty": "./bin/adf.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "cli",
+    "agent",
+    "daemon",
+    "sse",
+    "llm"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielorlando97/agent-deamon-framework.git",
+    "directory": "cli"
+  },
+  "bugs": {
+    "url": "https://github.com/danielorlando97/agent-deamon-framework/issues"
+  },
+  "homepage": "https://github.com/danielorlando97/agent-deamon-framework#readme",
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}
