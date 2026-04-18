@@ -13,6 +13,38 @@ binaries except the daemon.
 
 ---
 
+## Architecture: external intelligence for products above
+
+ADF is meant to sit **below** your product: you treat it as an **external
+provider of automated intelligence**—a stable **HTTP + SSE** boundary—while
+**apps, extensions, scripts, or SaaS** stay **above** the API and never spawn
+vendor CLIs directly.
+
+```
+ +-------------------------------------------------------------------+
+ |  Your product · UI, backend, workflows, integrations, SaaS        |
+ +-------------------------------------------------------------------+
+                               |
+                  HTTP / SSE (chat, engines, models)
+                               v
+ +-------------------------------------------------------------------+
+ |  ADF daemon · adapters, SSE, cwd, timeouts, stream parsing        |
+ +-------------------------------------------------------------------+
+                               |
+                  subprocess · env · vendor CLI flags
+                               v
+ +-------------------------------------------------------------------+
+ |  Agent CLIs on PATH · Claude, Codex, Cursor Agent, OpenCode, …    |
+ +-------------------------------------------------------------------+
+```
+
+The daemon **normalizes** different vendors into one stream shape; your layer
+only needs **one client contract** ([`docs/INTEGRATION.md`](docs/INTEGRATION.md)).
+That keeps **product code** focused on UX, permissions, and business rules,
+while **execution and CLI quirks** stay isolated in ADF.
+
+---
+
 ## Why this exists
 
 Teams already use multiple vendor CLIs with different flags and streaming
@@ -233,4 +265,3 @@ Repository: **[github.com/danielorlando97/agent-deamon-framework](https://github
 
 To publish the CLI package to npm separately: `npm run build -w cli`, then
 `npm publish` from `cli/` (adjust package scope/name on npm if needed).
-# agent-deamon-framework
