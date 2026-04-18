@@ -156,18 +156,6 @@ npm run build -w cli
 cd cli && npm link
 ```
 
-### Option C — published package (when available)
-
-After the CLI is published to npm:
-
-```bash
-npm install -g @actualidad/adf-cli
-```
-
-You still need the **full monorepo** on disk for `run daemon` / `run web`, and
-either run commands **inside the clone** or set **`ADF_FRAMEWORK_ROOT`** to that
-path.
-
 ---
 
 ## CLI reference
