@@ -1,0 +1,19 @@
+{
+  "name": "agent-deamon-framework",
+  "private": true,
+  "workspaces": ["daemon", "web", "cli"],
+  "scripts": {
+    "build": "npm run build -w cli && npm run build -w daemon && npm run build -w web",
+    "smoke": "bash scripts/smoke.sh",
+    "install:cli": "npm run build -w cli && npm install -g ./cli",
+    "unlink:cli": "npm uninstall -g @actualidad/adf-cli"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielorlando97/agent-deamon-framework.git"
+  },
+  "license": "MIT"
+}
