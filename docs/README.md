@@ -1,48 +1,49 @@
-# Documentación del proyecto
+# Project documentation
 
-Índice de toda la documentación de **agent-deamon-framework**: guías para
-quien solo quiere usarlo y material técnico para quien lo amplía o integra.
-
----
-
-## Para usuarios
-
-| Documento | Contenido |
-|-----------|-----------|
-| **[Inicio rápido](QUICKSTART.md)** | Instalar, `adf` local o global (`npm run install:cli`), smoke, puertos y motores (`engineId`). |
-| **[Guía de usuario](USER_GUIDE.md)** | Qué es el producto, instalación, web, CLI, motores, `ADF_FRAMEWORK_ROOT`, FAQ. |
+Index of all **agent-deamon-framework** documentation: guides for end users and
+technical material for those who extend or integrate the project.
 
 ---
 
-## Para desarrolladores e integradores
+## For users
 
-| Documento | Contenido |
-|-----------|-----------|
-| **[Documentación técnica](TECHNICAL.md)** | Arquitectura del monorepo, paquetes, flujos de datos, puntos de extensión, variables, límites del MVP. |
-| **[Integración en otros productos](INTEGRATION.md)** | Contrato HTTP/SSE paso a paso, backends, navegador, seguridad, despliegue, CLI `adf`, cliente TypeScript de ejemplo. |
-
----
-
-## Resumen en una frase
-
-Un **daemon HTTP local** expone motores (CLIs y demos); la **web** y la **CLI**
-son clientes que solo hablan con ese API — no ejecutan motores por su cuenta.
+| Document | Contents |
+|----------|----------|
+| **[Quick start](QUICKSTART.md)** | Install, local or global `adf` (`npm run install:cli`), smoke test, ports, engines (`engineId`). |
+| **[User guide](USER_GUIDE.md)** | What the product is, installation, web UI, CLI, engines, `ADF_FRAMEWORK_ROOT`, FAQ. |
 
 ---
 
-## Estructura del repositorio (referencia rápida)
+## For developers and integrators
+
+| Document | Contents |
+|----------|----------|
+| **[Technical documentation](TECHNICAL.md)** | Monorepo architecture, packages, data flows, extension points, env vars, MVP limits. |
+| **[Integration with other products](INTEGRATION.md)** | HTTP/SSE contract step by step, backends, browser, security, deployment, `adf` CLI, sample TypeScript client. |
+
+---
+
+## One-line summary
+
+A **local HTTP daemon** exposes engines (CLIs and demos); the **web app** and
+**CLI** are clients that only talk to that API—they never run engines on their
+own.
+
+---
+
+## Repository layout (quick reference)
 
 ```
 agent-deamon-framework/
-├── daemon/          # Servidor Hono + motores + SSE
+├── daemon/          # Hono server + engines + SSE
 ├── web/             # Vite + React (demo UI)
-├── cli/             # adf + agent-daemon-tty (chat por HTTP)
-├── docs/            # Esta carpeta (QUICKSTART, guías, integración)
-├── openspec/        # Cambio OpenSpec (proposal, specs, tasks)
+├── cli/             # adf + agent-daemon-tty (HTTP chat)
+├── docs/            # This folder (QUICKSTART, guides, integration)
+├── openspec/        # OpenSpec change proposals (proposal, specs, tasks)
 ├── scripts/         # smoke.sh, install-cli.sh
-├── package.json     # workspaces npm
-└── README.md        # Inicio rápido (inglés)
+├── package.json     # npm workspaces
+└── README.md        # Quick start at monorepo root
 ```
 
-Para arranque inmediato: **[QUICKSTART.md](QUICKSTART.md)** (ES) o
-**[README.md](../README.md)** (inglés) en la raíz del monorepo.
+For immediate startup: **[QUICKSTART.md](QUICKSTART.md)** or
+**[README.md](../README.md)** at the monorepo root.

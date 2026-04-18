@@ -1,43 +1,43 @@
-# Documentación técnica — Agent daemon framework
+# Technical documentation — Agent daemon framework
 
-Visión orientada a **mantenimiento, extensión e integración** del monorepo
-`agent-deamon-framework`. Complementa [INTEGRATION.md](INTEGRATION.md), que se
-centra en el contrato HTTP/SSE para productos externos.
-
----
-
-## 1. Alcance del MVP
-
-| Incluido | Fuera de alcance (MVP) |
-|----------|-------------------------|
-| Daemon HTTP local (Hono) | Autenticación en el daemon |
-| Catálogo de motores + ejecución + SSE | Persistencia de conversaciones en servidor |
-| Demo web (Vite + React) | Multi-tenant |
-| CLI que usa `fetch` + instalación global opcional desde el clon (`npm install -g ./cli`) | Versión estable publicada en npm registry (opcional futuro) |
-| Detección `command -v` para CLIs | Matriz de versiones soportadas por CLI |
+Maintenance-, extension-, and integration-focused view of the
+`agent-deamon-framework` monorepo. Complements [INTEGRATION.md](INTEGRATION.md),
+which focuses on the HTTP/SSE contract for external products.
 
 ---
 
-## 2. Estructura de workspaces (npm)
+## 1. MVP scope
 
-Raíz: `agent-deamon-framework/package.json`
+| In scope | Out of scope (MVP) |
+|----------|---------------------|
+| Local HTTP daemon (Hono) | Authentication in the daemon |
+| Engine catalog + execution + SSE | Server-side conversation persistence |
+| Web demo (Vite + React) | Multi-tenant |
+| CLI using `fetch` + optional global install from clone (`npm install -g ./cli`) | Stable version published on npm registry (optional future) |
+| `command -v` detection for CLIs | Supported CLI version matrix |
+
+---
+
+## 2. Workspace layout (npm)
+
+Root: `agent-deamon-framework/package.json`
 
 ```json
 "workspaces": ["daemon", "web", "cli"]
 ```
 
-| Paquete | Ruta | Rol |
-|---------|------|-----|
-| `daemon` | `daemon/` | Servidor Node: rutas `/api/*`, registro de motores, SSE. |
-| `web` | `web/` | SPA React: proxy `/api` → daemon en desarrollo. |
-| `cli` | `cli/` | Binarios `adf` y `agent-daemon-tty` (alias): cliente HTTP; spawn en segundo plano solo en el flujo legacy `up`. |
+| Package | Path | Role |
+|---------|------|------|
+| `daemon` | `daemon/` | Node server: `/api/*` routes, engine registry, SSE. |
+| `web` | `web/` | React SPA: proxies `/api` → daemon in development. |
+| `cli` | `cli/` | `adf` and `agent-daemon-tty` (alias) binaries: HTTP client; background spawn only in legacy `up` flow. |
 
-Dependencias compartidas se **hoistean** a `node_modules/` en la raíz del
-monorepo (p. ej. `tsx` para el launcher de la CLI y el daemon en dev).
+Shared dependencies are **hoisted** to `node_modules/` at the monorepo root (e.g.
+`tsx` for the CLI launcher and daemon in dev).
 
 ---
 
-## 3. Diagrama lógico
+## 3. Logical diagram
 
 ```
                     ┌──────────────┐
@@ -53,7 +53,7 @@ monorepo (p. ej. `tsx` para el launcher de la CLI y el daemon en dev).
 │  -tty        │               │                 │
 └──────┬───────┘               └────────┬────────┘
        │                                │
-       │  spawn (solo bin legacy `up`)  │
+       │  spawn (legacy `up` bin only)  │
        ▼                                │
 ┌──────────────────────────────────────┴───────┐
 │              daemon/ (Hono)                 │
@@ -67,158 +67,159 @@ monorepo (p. ej. `tsx` para el launcher de la CLI y el daemon en dev).
               └────────────────┘
 ```
 
-La **web** y la **cli** no importan `daemon/src/*`; solo consumen URLs HTTP.
+**Web** and **cli** do not import `daemon/src/*`; they only consume HTTP URLs.
 
 ---
 
-## 4. Paquete `daemon/`
+## 4. `daemon/` package
 
 ### 4.1. Stack
 
 - **Runtime:** Node 20+, ESM (`"type": "module"`).
-- **Framework HTTP:** [Hono](https://hono.dev/) + `@hono/node-server` (`serve`).
-- **Validación:** Zod (`schemas.ts`).
-- **Streaming:** `hono/streaming` → `streamSSE`, eventos JSON en campo `data`.
+- **HTTP framework:** [Hono](https://hono.dev/) + `@hono/node-server` (`serve`).
+- **Validation:** Zod (`schemas.ts`).
+- **Streaming:** `hono/streaming` → `streamSSE`, JSON events in `data` field.
 
-### 4.2. Punto de entrada
+### 4.2. Entry point
 
 `daemon/src/index.ts`
 
-- CORS aplicado a `/api/*` (lista fija de orígenes Vite).
-- Rutas: `GET /api/health`, `GET /api/engines`, `GET /api/engine-models`,
+- CORS applied to `/api/*` (fixed list of Vite origins).
+- Routes: `GET /api/health`, `GET /api/engines`, `GET /api/engine-models`,
   `POST /api/chat`.
 
-### 4.3. Configuración
+### 4.3. Configuration
 
-`daemon/src/config.ts` lee:
+`daemon/src/config.ts` reads:
 
 - `AGENT_DAEMON_HOST` (default `127.0.0.1`)
 - `AGENT_DAEMON_PORT` (default `8787`)
 - `AGENT_DAEMON_TIMEOUT_MS` (default 20 min)
 - `AGENT_DAEMON_CWD` (default `process.cwd()`)
 
-### 4.4. Motores (engines)
+### 4.4. Engines
 
-| Archivo | Contenido |
-|---------|-----------|
+| File | Contents |
+|------|----------|
 | `engines/types.ts` | `StreamEvent`, `EngineDefinition`, `EmitFn`. |
-| `engines/registry.ts` | Ensambla solo `subprocessEngines()` desde `adaptadores/`. |
-| `engines/adaptadores/subprocess-engines.ts` | Solo agrega el array: importa un `.ts` por motor CLI. |
-| `engines/adaptadores/claude.ts`, `codex.ts`, `cursor-agent.ts`, `opencode.ts`, `pi.ts`, `qwen.ts` | Un motor subprocess por archivo (comentario de invocación CLI arriba). |
-| `engines/adaptadores/lib/*.ts` | Utilidades compartidas (JSON por línea, cierre de proceso, formato Claude). |
-| `engines/spawn-helpers.ts` | `runLineProcess`: stdin opcional, líneas stdout, timeout, señales. |
-| `engines/engine-env.ts` | Sufijo `engineId` → `AGENT_ENGINE_*_ARGS_JSON`, parseo/caps de argv extra, metadata `integration` en el listado HTTP. |
-| `engines/list-models.ts` | `GET /api/engine-models`: sondea CLIs (`agent`, `opencode`, `pi`) o listas estáticas (`claude`, `codex`, `qwen`). |
-| `engines/detect.ts` | `commandOnPath` vía `sh -lc command -v`. |
+| `engines/registry.ts` | Assembles only `subprocessEngines()` from `adaptadores/`. |
+| `engines/adaptadores/subprocess-engines.ts` | Adds the array: imports one `.ts` per CLI engine. |
+| `engines/adaptadores/claude.ts`, `codex.ts`, `cursor-agent.ts`, `opencode.ts`, `pi.ts`, `qwen.ts` | One subprocess engine per file (CLI invocation comment at top). |
+| `engines/adaptadores/lib/*.ts` | Shared helpers (JSON lines, process shutdown, Claude format). |
+| `engines/spawn-helpers.ts` | `runLineProcess`: optional stdin, stdout lines, timeout, signals. |
+| `engines/engine-env.ts` | `engineId` suffix → `AGENT_ENGINE_*_ARGS_JSON`, argv extra parsing/caps, `integration` metadata for HTTP listing. |
+| `engines/list-models.ts` | `GET /api/engine-models`: polls CLIs (`agent`, `opencode`, `pi`) or static lists (`claude`, `codex`, `qwen`). |
+| `engines/detect.ts` | `commandOnPath` via `sh -lc command -v`. |
 
-**Contrato interno:** `run(ctx)` recibe `message`, `cwd`, `timeoutMs`, `signal`,
-`emit` (async). Debe terminar con evento terminal vía `done` o `error` en la
-mayoría de flujos felices; errores no capturados los envuelve `index.ts`.
+**Internal contract:** `run(ctx)` receives `message`, `cwd`, `timeoutMs`,
+`signal`, `emit` (async). It should end with a terminal event via `done` or
+`error` in most happy paths; uncaught errors are wrapped by `index.ts`.
 
-### 4.5. Añadir un motor nuevo (checklist técnico)
+### 4.5. Adding a new engine (technical checklist)
 
-1. Añadir `create…Engine(timeoutMs)` en un archivo nuevo bajo
-   `engines/adaptadores/` (o demo allí) y exportarlo desde
-   `adaptadores/subprocess-engines.ts` si es CLI externo.
-2. Registrar en `engines/registry.ts` (`allEngines()`).
-3. Si usa subproceso, preferir `runLineProcess` y parseo incremental robusto.
-4. Añadir fila en README / USER_GUIDE si es visible al usuario.
-5. Probar con `curl` + demo web + CLI.
+1. Add `create…Engine(timeoutMs)` in a new file under `engines/adaptadores/`
+   (or a demo there) and export it from `adaptadores/subprocess-engines.ts` if
+   it is an external CLI.
+2. Register in `engines/registry.ts` (`allEngines()`).
+3. If it uses a subprocess, prefer `runLineProcess` and robust incremental
+   parsing.
+4. Add a row to README / USER_GUIDE if user-visible.
+5. Test with `curl` + web demo + CLI.
 
 ---
 
-## 5. Paquete `web/`
+## 5. `web/` package
 
 - **Build tool:** Vite 6, React 19.
-- **Proxy:** `vite.config.ts` → `/api` a `http://127.0.0.1:8787`.
-- **UI principal:** `web/src/App.tsx` — estado local, `fetch` + lectura SSE
-  manual del body (no `EventSource` por ser POST).
+- **Proxy:** `vite.config.ts` → `/api` to `http://127.0.0.1:8787`.
+- **Main UI:** `web/src/App.tsx` — local state, `fetch` + manual SSE body read
+  (no `EventSource` because POST).
 
-**Nota:** el diseño es demo; no hay enrutador ni estado global.
+**Note:** design is demo-only; no router or global store.
 
 ---
 
-## 6. Paquete `cli/`
+## 6. `cli/` package
 
-### 6.1. Arranque del binario
+### 6.1. Binary startup
 
-`cli/bin/adf.mjs` es el shebang Node que importa `cli/dist/cli.js` (salida de
-`tsc`). Los binarios npm declarados son **`adf`** y **`agent-daemon-tty`**
-(apuntan al mismo archivo).
+`cli/bin/adf.mjs` is the Node shebang that imports `cli/dist/cli.js` (`tsc`
+output). npm-declared binaries are **`adf`** and **`agent-daemon-tty`** (same
+file).
 
-### 6.2. Módulos
+### 6.2. Modules
 
-| Archivo | Responsabilidad |
-|---------|-----------------|
-| `cli/src/cli.ts` | Parsing de argv, comandos `run daemon` / `run web` / `stop` / `chat`, REPL SSE, modo legacy `agent-daemon-tty`, detección del monorepo y `spawn` de `npm run dev` en `daemon/` y `web/`. |
+| File | Responsibility |
+|------|----------------|
+| `cli/src/cli.ts` | Arg parsing, `run daemon` / `run web` / `stop` / `chat`, SSE REPL, legacy `agent-daemon-tty` mode, monorepo detection and `spawn` of `npm run dev` in `daemon/` and `web/`. |
 
-### 6.3. Resolución del monorepo
+### 6.3. Monorepo resolution
 
-`findFrameworkRoot()` necesita la raíz que contiene **`daemon/package.json`** y
-**`web/package.json`**. Orden:
+`findFrameworkRoot()` needs the root containing **`daemon/package.json`** and
+**`web/package.json`**. Order:
 
-1. **`ADF_FRAMEWORK_ROOT`** (ruta absoluta al clon) — útil con **`npm install -g`** fuera del árbol del repo.
-2. Subida desde **`process.cwd()`**.
-3. Subida desde el directorio del **`cli.js`** instalado (`npx adf`, `node_modules/.bin`).
+1. **`ADF_FRAMEWORK_ROOT`** (absolute path to clone) — useful with **`npm install -g`** outside the repo tree.
+2. Walk up from **`process.cwd()`**.
+3. Walk up from the **`cli.js`** install directory (`npx adf`, `node_modules/.bin`).
 
 Scripts: **`npm run install:cli`**, **`scripts/install-cli.sh`**, **`npm link`**
-en `cli/`. Ver [README.md](../README.md).
+in `cli/`. See [README.md](../README.md).
 
 ---
 
-## 7. Contrato API (resumen)
+## 7. API contract (summary)
 
-Detalle completo en [INTEGRATION.md §6–7](INTEGRATION.md).
+Full detail in [INTEGRATION.md — HTTP and SSE](INTEGRATION.md#6-http-contract-api-reference).
 
 - `GET /api/health` → `{ ok: true }`
 - `GET /api/engines` → `{ engines: EngineInfo[] }`
-- `GET /api/engine-models` → `{ engines: EngineModelsPayload[] }` (modelos por
-  motor: CLI o lista estática; ver `engines/list-models.ts`).
-- `POST /api/chat` → cuerpo `{ engineId, message, engineOptions?, model? }`
-  (`engineOptions` estricto; ver `daemon/src/schemas.ts`), respuesta
-  `text/event-stream` con JSON por evento `data:`.
+- `GET /api/engine-models` → `{ engines: EngineModelsPayload[] }` (models per
+  engine: CLI or static list; see `engines/list-models.ts`).
+- `POST /api/chat` → body `{ engineId, message, engineOptions?, model? }`
+  (`engineOptions` strict; see `daemon/src/schemas.ts`), response
+  `text/event-stream` with JSON per `data:` event.
 
 ---
 
-## 8. Scripts y utilidades
+## 8. Scripts and utilities
 
-| Ruta | Uso |
+| Path | Use |
 |------|-----|
-| `scripts/smoke.sh` | `curl` a health, engines y un turno de chat con el primer motor `available` (requiere `jq`). |
-| `adf run daemon` / `adf run web` | Arranque en desarrollo desde la raíz del monorepo. |
-| `adf chat` | REPL contra el daemon ya levantado. |
+| `scripts/smoke.sh` | `curl` health, engines, and one chat turn with first `available` engine (needs `jq`). |
+| `adf run daemon` / `adf run web` | Dev startup from monorepo root. |
+| `adf chat` | REPL against a running daemon. |
 
 ---
 
-## 9. Calidad y pruebas manuales
+## 9. Quality and manual testing
 
-No hay suite E2E automatizada en CI en este MVP. Checklist habitual:
+No automated E2E suite in CI for this MVP. Typical checklist:
 
-1. `npm install` en la raíz del monorepo.
-2. `curl` health + engines + POST chat con un motor disponible.
-3. `adf run daemon` + `adf run web` — flujo web (lista, enviar, streaming).
-4. `adf chat` con daemon ya arriba.
+1. `npm install` at monorepo root.
+2. `curl` health + engines + POST chat with an available engine.
+3. `adf run daemon` + `adf run web` — web flow (list, send, streaming).
+4. `adf chat` with daemon already up.
 5. `AGENT_DAEMON_PORT=8877 npx agent-daemon-tty --url http://127.0.0.1:8877` —
-   arranque legacy `up` sin conflicto con 8787.
+   legacy `up` startup without conflicting with 8787.
 
 ---
 
-## 10. Limitaciones y deuda técnica conocida
+## 10. Known limitations and technical debt
 
-- **CORS** fijo en código; integración desde otros orígenes requiere proxy o
-  cambio en `daemon/src/index.ts`.
-- **Errores de CLI** a veces se resumen como `exit 1` sin propagar el JSON de
-  error del proveedor al evento SSE (mejora posible en parsers).
-- **Pi / motores lentos:** timeouts y UX de cancelación dependen del usuario
-  (`Ctrl+C` / abort en fetch).
-- **Windows:** rutas y señales de subprocesos no son el foco del MVP (probado
-  principalmente en Unix).
+- **CORS** is fixed in code; integration from other origins needs a proxy or a
+  change in `daemon/src/index.ts`.
+- **CLI errors** are sometimes summarized as `exit 1` without forwarding vendor
+  error JSON into the SSE event (possible parser improvement).
+- **Pi / slow engines:** timeouts and cancel UX depend on the user (`Ctrl+C` /
+  fetch abort).
+- **Windows:** paths and subprocess signals are not the MVP focus (tested
+  mainly on Unix).
 
 ---
 
-## 11. Documentación relacionada
+## 11. Related documentation
 
-- [Índice `docs/README.md`](README.md)
-- [Guía de usuario](USER_GUIDE.md)
-- [Integración en productos](INTEGRATION.md)
-- [README raíz (quick start)](../README.md)
+- [Index `docs/README.md`](README.md)
+- [User guide](USER_GUIDE.md)
+- [Product integration](INTEGRATION.md)
+- [Root README (quick start)](../README.md)

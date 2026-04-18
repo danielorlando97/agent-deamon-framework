@@ -1,67 +1,67 @@
-# Integrar el agent daemon en tus productos
+# Integrating the agent daemon into your products
 
-Guía detallada, paso a paso, para conectar aplicaciones (web, backend, desktop)
-al **daemon HTTP** del monorepo `agent-deamon-framework`. Asume que el daemon
-expone la API documentada aquí (rutas bajo `/api`, streaming por SSE).
-
----
-
-## Tabla de contenidos
-
-1. [Qué es el daemon y qué problema resuelve](#1-qué-es-el-daemon-y-qué-problema-resuelve)
-2. [Arquitectura recomendada](#2-arquitectura-recomendada)
-3. [Requisitos previos](#3-requisitos-previos)
-4. [Paso 1: Obtener y arrancar el daemon](#4-paso-1-obtener-y-arrancar-el-daemon)
-5. [Paso 2: Comprobar conectividad](#5-paso-2-comprobar-conectividad)
-6. [Contrato HTTP: referencia de API](#6-contrato-http-referencia-de-api)
-7. [Contrato SSE: eventos de streaming](#7-contrato-sse-eventos-de-streaming)
-8. [Paso 3: Integrar desde un backend (Node, Python, Go, etc.)](#8-paso-3-integrar-desde-un-backend-node-python-go-etc)
-9. [Paso 4: Integrar desde una aplicación web (browser)](#9-paso-4-integrar-desde-una-aplicación-web-browser)
-10. [Motores (`engineId`) y disponibilidad](#10-motores-engineid-y-disponibilidad)  
-    10.1. [Flags extra (`AGENT_ENGINE_*_ARGS_JSON`)](#101-flags-extra-agent_engine_args_json)
-11. [Cancelación, timeouts y ciclo de vida](#11-cancelación-timeouts-y-ciclo-de-vida)
-12. [Errores y códigos HTTP](#12-errores-y-códigos-http)
-13. [Seguridad y despliegue](#13-seguridad-y-despliegue)
-14. [Patrones de despliegue](#14-patrones-de-despliegue)
-15. [Extender CORS y configuración avanzada](#15-extender-cors-y-configuración-avanzada)
-16. [Resolución de problemas](#16-resolución-de-problemas)
-17. [CLI consola (`adf` / `agent-daemon-tty`)](#17-cli-consola-adf--agent-daemon-tty)
-18. [Apéndice: cliente mínimo en TypeScript](#18-apéndice-cliente-mínimo-en-typescript)
+Detailed, step-by-step guide for connecting applications (web, backend, desktop)
+to the **HTTP daemon** of the `agent-deamon-framework` monorepo. Assumes the
+daemon exposes the API documented here (routes under `/api`, streaming via SSE).
 
 ---
 
-## 1. Qué es el daemon y qué problema resuelve
+## Table of contents
 
-El **daemon** es un proceso Node.js que:
-
-- Expone **HTTP** en un host/puerto configurables (por defecto `127.0.0.1:8787`).
-- Ofrece un catálogo de **motores** (engines): demos locales y, si existen en el
-  `PATH`, CLIs como Claude Code, Codex, Cursor `agent`, OpenCode, Pi, Qwen.
-- Para cada petición de chat, puede **lanzar subprocesos** o ejecutar lógica
-  interna y **retransmitir** el resultado como **Server-Sent Events (SSE)** con
-  eventos JSON normalizados.
-
-**Problema que resuelve:** tu producto (SaaS, IDE plugin, orquestador) no tiene
-que implementar el protocolo de cada CLI ni gestionar señales, timeouts y
-streams; habla **solo HTTP + JSON + SSE** con un proceso que corre **junto al
-usuario** (misma máquina o misma red de confianza).
+1. [What the daemon is and what problem it solves](#1-what-the-daemon-is-and-what-problem-it-solves)
+2. [Recommended architecture](#2-recommended-architecture)
+3. [Prerequisites](#3-prerequisites)
+4. [Step 1: Get and start the daemon](#4-step-1-get-and-start-the-daemon)
+5. [Step 2: Check connectivity](#5-step-2-check-connectivity)
+6. [HTTP contract: API reference](#6-http-contract-api-reference)
+7. [SSE contract: streaming events](#7-sse-contract-streaming-events)
+8. [Step 3: Integrate from a backend (Node, Python, Go, etc.)](#8-step-3-integrate-from-a-backend-node-python-go-etc)
+9. [Step 4: Integrate from a web application (browser)](#9-step-4-integrate-from-a-web-application-browser)
+10. [Engines (`engineId`) and availability](#10-engines-engineid-and-availability)  
+    10.1. [Injecting extra CLI arguments](#101-injecting-extra-cli-arguments)
+11. [Cancellation, timeouts, and lifecycle](#11-cancellation-timeouts-and-lifecycle)
+12. [Errors and HTTP status codes](#12-errors-and-http-status-codes)
+13. [Security and deployment](#13-security-and-deployment)
+14. [Deployment patterns](#14-deployment-patterns)
+15. [Extending CORS and advanced configuration](#15-extending-cors-and-advanced-configuration)
+16. [Troubleshooting](#16-troubleshooting)
+17. [Console CLI (adf and agent-daemon-tty)](#17-console-cli-adf-and-agent-daemon-tty)
+18. [Appendix: minimal TypeScript client](#18-appendix-minimal-typescript-client)
 
 ---
 
-## 2. Arquitectura recomendada
+## 1. What the daemon is and what problem it solves
+
+The **daemon** is a Node.js process that:
+
+- Exposes **HTTP** on a configurable host/port (default `127.0.0.1:8787`).
+- Offers a catalog of **engines**: local demos and, if present on `PATH`, CLIs
+  such as Claude Code, Codex, Cursor `agent`, OpenCode, Pi, Qwen.
+- For each chat request it may **spawn subprocesses** or run internal logic and
+  **relay** the result as **Server-Sent Events (SSE)** with normalized JSON
+  events.
+
+**Problem it solves:** your product (SaaS, IDE plugin, orchestrator) does not
+have to implement each CLI’s protocol or manage signals, timeouts, and streams;
+it speaks **only HTTP + JSON + SSE** to a process running **next to the user**
+(same machine or trusted network).
+
+---
+
+## 2. Recommended architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Tu producto (cloud / SaaS)                                  │
-│  — no ejecuta CLIs del usuario directamente                 │
+│  Your product (cloud / SaaS)                                  │
+│  — does not run user CLIs directly                            │
 └──────────────────────────────┬──────────────────────────────┘
-                               │  Opcional: cola, auth, billing
+                               │  Optional: queue, auth, billing
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Máquina del usuario                                          │
+│  User machine                                                 │
 │  ┌──────────────┐      HTTP/SSE      ┌─────────────────────┐ │
-│  │ Tu UI local   │ ◄──────────────► │  agent-daemon        │ │
-│  │ o agente local│                    │  (este repo)         │ │
+│  │ Your local UI │ ◄──────────────► │  agent-daemon        │ │
+│  │ or local agent│                    │  (this repo)         │ │
 │  └──────────────┘                    └──────────┬──────────┘ │
 │                                                 │ spawn       │
 │                                                 ▼             │
@@ -69,92 +69,92 @@ usuario** (misma máquina o misma red de confianza).
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Regla práctica:** el daemon debe ser alcanzable **solo desde donde tenga
-sentido ejecutar código local** (localhost o red privada). No lo expongas a
-Internet sin capas de autenticación y TLS.
+**Practical rule:** the daemon should be reachable **only from where running
+local code makes sense** (localhost or private network). Do not expose it to the
+internet without authentication and TLS layers.
 
 ---
 
-## 3. Requisitos previos
+## 3. Prerequisites
 
-| Requisito | Detalle |
-|-----------|---------|
-| Node.js | **20+** recomendado (alineado con el monorepo). |
-| Red | El cliente debe poder abrir **TCP** hacia `AGENT_DAEMON_HOST:AGENT_DAEMON_PORT`. |
-| CLIs (opcional) | Si usas motores reales, los binarios deben estar en el `PATH` y autenticados (API keys, OAuth, etc.) en la máquina del usuario. |
-| CORS (solo browser) | El daemon trae una lista fija de orígenes CORS; para otros orígenes usa **proxy reverso** o amplía la lista (ver [§15](#15-extender-cors-y-configuración-avanzada)). |
+| Requirement | Detail |
+|-------------|--------|
+| Node.js | **20+** recommended (aligned with the monorepo). |
+| Network | Client must open **TCP** to `AGENT_DAEMON_HOST:AGENT_DAEMON_PORT`. |
+| CLIs (optional) | For real engines, binaries must be on `PATH` and authenticated (API keys, OAuth, etc.) on the user machine. |
+| CORS (browser only) | Daemon ships a fixed CORS origin list; for other origins use a **reverse proxy** or extend the list (see [§15](#15-extending-cors-and-advanced-configuration)). |
 
 ---
 
-## 4. Paso 1: Obtener y arrancar el daemon
+## 4. Step 1: Get and start the daemon
 
-### 4.1. Ubicación en el repositorio
+### 4.1. Location in the repository
 
-El código del daemon vive en:
+Daemon code lives at:
 
 `agent-deamon-framework/daemon/`
 
-### 4.2. Instalación de dependencias
+### 4.2. Install dependencies
 
-Desde la raíz del monorepo `agent-deamon-framework`:
+From the `agent-deamon-framework` monorepo root:
 
 ```bash
 cd agent-deamon-framework
 npm install
 ```
 
-### 4.3. Variables de entorno
+### 4.3. Environment variables
 
-| Variable | Obligatoria | Default | Descripción |
-|----------|-------------|---------|-------------|
-| `AGENT_DAEMON_HOST` | No | `127.0.0.1` | Interfaz de escucha. Mantén loopback salvo que sepas por qué abrir más. |
-| `AGENT_DAEMON_PORT` | No | `8787` | Puerto HTTP. |
-| `AGENT_DAEMON_TIMEOUT_MS` | No | `1200000` (20 min) | Tiempo máximo por turno de chat (subprocesos). |
-| `AGENT_DAEMON_CWD` | No | `process.cwd()` del proceso | Directorio de trabajo para subprocesos (repositorio del usuario). |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AGENT_DAEMON_HOST` | No | `127.0.0.1` | Bind address. Keep loopback unless you know why to open wider. |
+| `AGENT_DAEMON_PORT` | No | `8787` | HTTP port. |
+| `AGENT_DAEMON_TIMEOUT_MS` | No | `1200000` (20 min) | Max time per chat turn (subprocesses). |
+| `AGENT_DAEMON_CWD` | No | Daemon `process.cwd()` | Working directory for subprocesses (user repo). |
 
-Ejemplo:
+Example:
 
 ```bash
 export AGENT_DAEMON_PORT=8787
-export AGENT_DAEMON_CWD="$HOME/proyectos/mi-repo"
+export AGENT_DAEMON_CWD="$HOME/projects/my-repo"
 ```
 
-### 4.4. Arranque en desarrollo
+### 4.4. Development startup
 
-Desde la raíz del monorepo (recomendado):
+From monorepo root (recommended):
 
 ```bash
 cd agent-deamon-framework
 adf run daemon
 ```
 
-Equivalente con npm en el workspace:
+Equivalent with npm in the workspace:
 
 ```bash
 cd agent-deamon-framework
 npm run dev -w daemon
 ```
 
-O solo el paquete daemon:
+Or daemon package only:
 
 ```bash
 cd agent-deamon-framework/daemon
 npm run dev
 ```
 
-Deberías ver un log similar a:
+You should see log output like:
 
 `agent-daemon listening on http://127.0.0.1:8787`
 
-### 4.5. Arranque en producción (referencia)
+### 4.5. Production startup (reference)
 
-Tras compilar (`npm run build -w daemon` si tienes script `tsc` emitiendo
-`dist/`), ejecuta el punto de entrada con Node. En este MVP el flujo habitual es
-**tsx** o **node** sobre el código transpilado; ajusta según tu pipeline.
+After building (`npm run build -w daemon` if `tsc` emits `dist/`), run the entry
+with Node. In this MVP the usual path is **tsx** or **node** on transpiled code;
+adjust for your pipeline.
 
 ---
 
-## 5. Paso 2: Comprobar conectividad
+## 5. Step 2: Check connectivity
 
 ### 5.1. Health check
 
@@ -162,49 +162,48 @@ Tras compilar (`npm run build -w daemon` si tienes script `tsc` emitiendo
 curl -sS "http://127.0.0.1:8787/api/health"
 ```
 
-Respuesta esperada: `{"ok":true}`
+Expected response: `{"ok":true}`
 
-### 5.2. Listado de motores
+### 5.2. Engine list
 
 ```bash
 curl -sS "http://127.0.0.1:8787/api/engines" | jq .
 ```
 
-Comprueba que el JSON incluye `engines[]` con `id`, `label`, `description` y
+Confirm JSON includes `engines[]` with `id`, `label`, `description`, and
 `available`.
 
-### 5.3. Chat de prueba (SSE)
+### 5.3. Test chat (SSE)
 
 ```bash
 ENGINE="$(curl -sS "http://127.0.0.1:8787/api/engines" | jq -r '[.engines[] | select(.available==true)][0].id')"
 curl -sS -N -X POST "http://127.0.0.1:8787/api/chat" \
   -H "Content-Type: application/json" \
-  -d "{\"engineId\":\"${ENGINE}\",\"message\":\"hola\"}"
+  -d "{\"engineId\":\"${ENGINE}\",\"message\":\"hello\"}"
 ```
 
-Debes ver líneas `data: {...}` en formato SSE (ver [§7](#7-contrato-sse-eventos-de-streaming)).
+You should see `data: {...}` lines in SSE format (see [§7](#7-sse-contract-streaming-events)).
 
-El script `agent-deamon-framework/scripts/smoke.sh` automatiza parte de esto.
+The `agent-deamon-framework/scripts/smoke.sh` script automates part of this.
 
 ---
 
-## 6. Contrato HTTP: referencia de API
+## 6. HTTP contract: API reference
 
 Base URL: `http://{AGENT_DAEMON_HOST}:{AGENT_DAEMON_PORT}`
 
-Todas las rutas documentadas van bajo el prefijo **`/api`**.
+All documented routes use the **`/api`** prefix.
 
 ### 6.1. `GET /api/health`
 
-- **Propósito:** comprobar que el proceso responde.
-- **Cuerpo:** JSON `{ "ok": true }`
-- **Códigos:** `200`
+- **Purpose:** verify the process responds.
+- **Body:** JSON `{ "ok": true }`
+- **Status codes:** `200`
 
 ### 6.2. `GET /api/engines`
 
-- **Propósito:** catálogo de motores para poblar selectores o políticas de
-  enrutamiento.
-- **Cuerpo:** JSON
+- **Purpose:** engine catalog for selectors or routing policies.
+- **Body:** JSON
 
 ```json
 {
@@ -223,69 +222,69 @@ Todas las rutas documentadas van bajo el prefijo **`/api`**.
 }
 ```
 
-Cada motor incluye `integration` con la variable `argvJsonEnvKey` y el sufijo
-codificado (`engineIdEnvSuffix`); véase §10.1.
+Each engine includes `integration` with `argvJsonEnvKey` and encoded suffix
+(`engineIdEnvSuffix`); see [§10.1](#101-injecting-extra-cli-arguments).
 
-- **Códigos:** `200`
+- **Status codes:** `200`
 
 ### 6.2.1. `GET /api/engine-models`
 
-- **Propósito:** catálogo de **modelos sugeridos** por motor (salida de CLIs como
-  `agent --list-models`, `opencode models`, `pi --list-models`, o listas
-  estáticas cuando no hay comando).
-- **Cuerpo:** JSON `{ "engines": [ { "engineId", "available", "source",
+- **Purpose:** catalog of **suggested models** per engine (output from CLIs such
+  as `agent --list-models`, `opencode models`, `pi --list-models`, or static
+  lists when no command exists).
+- **Body:** JSON `{ "engines": [ { "engineId", "available", "source",
   "models": [{ "id", "label?" }], "error?", "note?" } ] }`.
-- **Códigos:** `200`  
-  Los sondeos pueden tardar hasta `AGENT_DAEMON_LIST_MODELS_TIMEOUT_MS`
-  (default 45s) por proceso.
+- **Status codes:** `200`  
+  Polling may take up to `AGENT_DAEMON_LIST_MODELS_TIMEOUT_MS` (default 45s)
+  per process.
 
 ### 6.3. `POST /api/chat`
 
-- **Propósito:** un turno de conversación: un mensaje de usuario → stream de
-  eventos hasta término.
-- **Cabeceras:** `Content-Type: application/json`
-- **Cuerpo (JSON):**
+- **Purpose:** one conversation turn: one user message → event stream until
+  completion.
+- **Headers:** `Content-Type: application/json`
+- **Body (JSON):**
 
-| Campo | Tipo | Restricciones |
-|-------|------|----------------|
-| `engineId` | string | `1…64` caracteres, debe existir en el catálogo. |
-| `message` | string | `1…200000` caracteres. |
-| `engineOptions` | objeto (opc.) | Vocabulario **único** y **estricto** (sin claves desconocidas) para el subproceso. |
-| `model` | string (opc., legacy) | Igual que `engineOptions.model` si esta no viene. |
+| Field | Type | Constraints |
+|-------|------|-------------|
+| `engineId` | string | `1…64` chars, must exist in catalog. |
+| `message` | string | `1…200000` chars. |
+| `engineOptions` | object (opt.) | **Unique**, **strict** vocabulary (no unknown keys) for subprocess. |
+| `model` | string (opt., legacy) | Same as `engineOptions.model` when that is omitted. |
 
-Campos permitidos en **`engineOptions`** (todos opcionales):
+Allowed fields in **`engineOptions`** (all optional):
 
-| Campo | Uso típico |
-|-------|------------|
-| `model` | `--model` / equivalente en el motor. |
-| `cwd` | Directorio de trabajo del subproceso; debe quedar **bajo** `AGENT_DAEMON_CWD`. |
-| `addDirs` | Lista de rutas extra; Claude → `--add-dir` (cada una bajo el cwd del daemon). |
+| Field | Typical use |
+|-------|-------------|
+| `model` | `--model` / equivalent for the engine. |
+| `cwd` | Subprocess working dir; must stay **under** `AGENT_DAEMON_CWD`. |
+| `addDirs` | Extra paths; Claude → `--add-dir` (each under daemon cwd). |
 | `permissionMode` | Claude → `--permission-mode` (`acceptEdits`, `auto`, `bypassPermissions`, …). |
 | `approvalMode` | Qwen → `--approval-mode` (`plan`, `default`, `auto-edit`, `yolo`). |
 | `executionMode` | Cursor `agent` → `--mode` (`plan`, `ask`). |
-| `resume` | `boolean` o `string` (motor: `--resume` / `-r` / `--continue` según adaptador). |
-| `sessionId` | Identificador de sesión (p. ej. Claude `--session-id`, OpenCode `-s`). |
+| `resume` | `boolean` or `string` (engine: `--resume` / `-r` / `--continue` per adapter). |
+| `sessionId` | Session id (e.g. Claude `--session-id`, OpenCode `-s`). |
 | `thinking` | Pi → `--thinking` (`off` … `xhigh`). |
 | `variant` | OpenCode → `--variant`. |
-| `streamPartialOutput` | Cursor: `false` omite `--stream-partial-output`. |
-| `continueSession` | Continuar sesión (`-c` / `--continue` según motor). |
+| `streamPartialOutput` | Cursor: `false` omits `--stream-partial-output`. |
+| `continueSession` | Continue session (`-c` / `--continue` per engine). |
 | `forkSession` | Claude → `--fork-session`. |
 
-- **Respuesta exitosa:** `200` con cuerpo **`text/event-stream`** (SSE).
-- **Errores (JSON, no SSE):**
+- **Success response:** `200` with **`text/event-stream`** (SSE) body.
+- **Errors (JSON, not SSE):**
 
-| Código | Cuándo |
-|--------|--------|
-| `400` | JSON inválido, validación Zod fallida, o motor **existente** pero `available: false`. |
-| `404` | `engineId` desconocido. |
+| Code | When |
+|------|------|
+| `400` | Invalid JSON, failed Zod validation, or engine **exists** but `available: false`. |
+| `404` | Unknown `engineId`. |
 
-Ejemplo de cuerpo de error:
+Example error body:
 
 ```json
 { "error": "Unknown engine: foo" }
 ```
 
-o, con validación:
+or, with validation:
 
 ```json
 { "error": { "fieldErrors": { … }, "formErrors": [] } }
@@ -293,52 +292,50 @@ o, con validación:
 
 ---
 
-## 7. Contrato SSE: eventos de streaming
+## 7. SSE contract: streaming events
 
-Cada evento SSE lleva en `data` un **único objeto JSON** (una línea), sin
-campos adicionales fuera del JSON.
+Each SSE event carries in `data` a **single JSON object** (one line), with no
+extra fields outside JSON.
 
-### 7.1. Tipos de evento
+### 7.1. Event types
 
-| `type` | Campos | Significado |
-|--------|--------|-------------|
-| `delta` | `text: string` | Fragmento de salida del asistente (acumulable en el cliente). |
-| `log` | `stream: "stdout" \| "stderr"`, `message: string` | Trazas de depuración o stderr del subproceso. |
-| `error` | `message: string` | Fallo recuperable o de negocio; el cliente debe mostrarlo y **dar por terminado** el turno salvo que también llegue `done` (ver nota). |
-| `done` | — | Turno completado con éxito relativo al motor (sin excepción no capturada). |
+| `type` | Fields | Meaning |
+|--------|--------|---------|
+| `delta` | `text: string` | Assistant output fragment (append on client). |
+| `log` | `stream: "stdout" \| "stderr"`, `message: string` | Debug traces or subprocess stderr. |
+| `error` | `message: string` | Recoverable or business failure; client should display and **treat turn as ended** unless `done` also arrives (see note). |
+| `done` | — | Turn completed successfully relative to the engine (no uncaught exception). |
 
-**Nota de terminación:** en errores fatales del motor puede emitirse `error`
-sin `done`. Tu cliente debe considerar **`error` como estado terminal** y
-opcionalmente esperar cierre del stream. Si el motor termina bien, suele llegar
-`done`.
+**Termination note:** fatal engine errors may emit `error` without `done`. Your
+client should treat **`error` as terminal** and optionally wait for stream close.
+When the engine succeeds, `done` usually arrives.
 
-### 7.2. Formato bruto SSE
+### 7.2. Raw SSE format
 
-Ejemplo (simplificado):
+Example (simplified):
 
 ```
-data: {"type":"delta","text":"Hola"}
+data: {"type":"delta","text":"Hello"}
 
 data: {"type":"done"}
 
 ```
 
-Los bloques van separados por **doble salto de línea** (`\n\n`). Parsea
-líneas que empiecen por `data: `.
+Blocks are separated by **double newline** (`\n\n`). Parse lines starting with
+`data: `.
 
 ---
 
-## 8. Paso 3: Integrar desde un backend (Node, Python, Go, etc.)
+## 8. Step 3: Integrate from a backend (Node, Python, Go, etc.)
 
-### 8.1. Flujo recomendado
+### 8.1. Recommended flow
 
-1. **Descubrimiento:** `GET /api/engines` al iniciar sesión o al configurar el
-   workspace del usuario.
-2. **Selección:** guarda `engineId` elegido (preferiblemente solo si
+1. **Discovery:** `GET /api/engines` at session start or workspace setup.
+2. **Selection:** persist chosen `engineId` (preferably only if
    `available === true`).
-3. **Ejecución:** `POST /api/chat` con `fetch`, `httpx`, `http.Client`, etc.
-4. **Consumo:** lee el cuerpo como stream de bytes, acumula buffer, parte por
-   `\n\n`, parsea JSON tras `data: `.
+3. **Execution:** `POST /api/chat` with `fetch`, `httpx`, `http.Client`, etc.
+4. **Consumption:** read body as byte stream, accumulate buffer, split on
+   `\n\n`, parse JSON after `data: `.
 
 ### 8.2. Node.js (fetch + ReadableStream)
 
@@ -346,7 +343,7 @@ líneas que empiecen por `data: `.
 const res = await fetch("http://127.0.0.1:8787/api/chat", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ engineId: "claude", message: "hola" }),
+  body: JSON.stringify({ engineId: "claude", message: "hello" }),
 });
 
 if (!res.ok) {
@@ -361,167 +358,164 @@ for (;;) {
   const { done, value } = await reader.read();
   if (done) break;
   buf += dec.decode(value, { stream: true });
-  // Aquí: extraer bloques SSE de `buf` (ver apéndice §17).
+  // Extract SSE blocks from `buf` (see appendix §18).
 }
 ```
 
-### 8.3. Python (requests con stream)
+### 8.3. Python (requests with stream)
 
-Usa `stream=True` y lee línea a línea; detecta `data: ` y `json.loads`.
+Use `stream=True` and read line by line; detect `data: ` and `json.loads`.
 
 ### 8.4. Go
 
-Usa `http.Post` con `Body` como `io.Reader`; lee el body con un scanner o
-buffer y aplica el mismo parser SSE.
+Use `http.Post` with `Body` as `io.Reader`; read with a scanner or buffer and
+apply the same SSE parser.
 
-### 8.5. Conexión desde tu “cloud”
+### 8.5. Connecting from your “cloud”
 
-Si tu backend en la nube necesita orquestar al usuario, **no** llames al
-`127.0.0.1` del servidor cloud: ahí no existe el daemon del usuario. Necesitas
-uno de:
+If your cloud backend must orchestrate the user, do **not** call `127.0.0.1` on
+the cloud server: the user’s daemon is not there. You need one of:
 
-- **Agente local** que tu app instale y que se registre contra tu API con un
-  túnel o websocket (fuera del alcance de este MVP).
-- **VPN / red privada** donde el daemon del usuario tenga IP alcanzable por
-  tu componente de confianza.
+- **Local agent** your app installs that registers with your API via tunnel or
+  websocket (out of scope for this MVP).
+- **VPN / private network** where the user’s daemon has a reachable IP for your
+  trusted component.
 
 ---
 
-## 9. Paso 4: Integrar desde una aplicación web (browser)
+## 9. Step 4: Integrate from a web application (browser)
 
-### 9.1. Misma máquina, mismo origen (recomendado)
+### 9.1. Same machine, same origin (recommended)
 
-Evita CORS sirviendo tu SPA y proxificando `/api` al daemon. Ejemplo ya
-incluido en Vite (`web/vite.config.ts`):
+Avoid CORS by serving your SPA and proxying `/api` to the daemon. Example
+included in Vite (`web/vite.config.ts`):
 
 ```ts
 proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: true } }
 ```
 
-En el navegador usas rutas relativas:
+In the browser use relative routes:
 
 ```ts
 await fetch("/api/engines");
 await fetch("/api/chat", { method: "POST", … });
 ```
 
-### 9.2. Origen distinto (otro puerto o dominio)
+### 9.2. Different origin (other port or domain)
 
-El daemon solo permite CORS explícito para `localhost:5173` y
-`127.0.0.1:5173` en el código actual. Opciones:
+The daemon currently allows explicit CORS for `localhost:5173` and
+`127.0.0.1:5173`. Options:
 
-1. **Proxy** en tu servidor de desarrollo o gateway (preferido).
-2. **Ampliar** la lista en `daemon/src/index.ts` (`cors({ origin: [...] })`).
+1. **Proxy** on your dev server or gateway (preferred).
+2. **Extend** the list in `daemon/src/index.ts` (`cors({ origin: [...] })`).
 
 ### 9.3. AbortController
 
-Pasa `signal` a `fetch` para cancelar la petición cuando el usuario pulse
-“Stop”; el daemon aborta el trabajo asociado al request cuando el runtime lo
-propaga al motor.
+Pass `signal` to `fetch` to cancel when the user hits “Stop”; the daemon aborts
+work tied to the request when the runtime propagates to the engine.
 
 ---
 
-## 10. Motores (`engineId`) y disponibilidad
+## 10. Engines (`engineId`) and availability
 
-| `id` | Comportamiento típico |
-|------|------------------------|
-| `claude`, `codex`, `cursor_agent`, `opencode`, `pi`, `qwen` | Subproceso si el binario existe en `PATH`. |
+| `id` | Typical behavior |
+|------|------------------|
+| `claude`, `codex`, `cursor_agent`, `opencode`, `pi`, `qwen` | Subprocess if binary exists on `PATH`. |
 
-**Integración robusta:**
+**Robust integration:**
 
-1. No hardcodees “siempre hay Claude”; usa `GET /api/engines`.
-2. Deshabilita UI si `available === false`.
-3. Maneja `400` por motor no disponible si el catálogo cambia entre el `GET` y
-   el `POST`.
+1. Do not hardcode “Claude always available”; use `GET /api/engines`.
+2. Disable UI when `available === false`.
+3. Handle `400` for unavailable engine if catalog changes between `GET` and
+   `POST`.
 
-### 10.1. Flags extra (`AGENT_ENGINE_*_ARGS_JSON`)
+### 10.1. Injecting extra CLI arguments
 
-Sin recompilar el daemon puedes añadir **argumentos de línea de comandos**
-(flags como `--model`, `--foo`, valores sueltos que el CLI espere después de
-un flag, etc.) al subproceso de un motor concreto:
+Use env var pattern **`AGENT_ENGINE_*_ARGS_JSON`** to append **command-line
+arguments** (flags
+such as `--model`, `--foo`, bare values expected after a flag, etc.) to a given
+engine’s subprocess:
 
-| Pieza | Significado |
-|-------|-------------|
-| Sufijo `<ENGINEID>` | El `id` del motor en **mayúsculas**; caracteres no alfanuméricos → `_` (ej. `cursor_agent` → `CURSOR_AGENT`). |
-| `AGENT_ENGINE_<SUFFIX>_ARGS_JSON` | JSON **array de strings** fusionado en el `argv` del CLI en el orden documentado en el adaptador (`daemon/src/engines/adaptadores/*.ts`). |
+| Piece | Meaning |
+|-------|---------|
+| `<ENGINEID>` suffix | Engine `id` in **uppercase**; non-alphanumeric → `_` (e.g. `cursor_agent` → `CURSOR_AGENT`). |
+| `AGENT_ENGINE_<SUFFIX>_ARGS_JSON` | JSON **array of strings** merged into CLI `argv` in the order documented per adapter (`daemon/src/engines/adaptadores/*.ts`). |
 
-**Precedencia:** el adaptador monta primero su `argv` por defecto y luego
-inserta los tokens de `ARGS_JSON` en la posición documentada (antes del prompt
-en argv, antes de `-` en stdin, etc.). El hijo **sigue heredando** `process.env`
-del proceso daemon; no hay variables `*_ENV_JSON` ni merge extra de entorno
-desde esta función.
+**Precedence:** adapter builds default `argv` first, then inserts `ARGS_JSON`
+tokens at the documented position (before prompt in argv, before `-` on stdin,
+etc.). The child **still inherits** the daemon `process.env`; there is no
+`*_ENV_JSON` or extra env merge from this feature.
 
-**Límites y errores:** tamaño del JSON, número de tokens y longitud por token
-están acotados en `daemon/src/engines/engine-env.ts` (`ENGINE_ARGV_LIMITS`). Si
-el JSON es inválido, no es un array de strings, o un token contiene salto de
-línea, se **ignoran** los extras (aviso en consola del daemon) y se usa solo el
-argv por defecto.
+**Limits and errors:** JSON size, token count, and per-token length are capped in
+`daemon/src/engines/engine-env.ts` (`ENGINE_ARGV_LIMITS`). Invalid JSON, not a
+string array, or newline in a token: **extras ignored** (daemon console
+warning), default argv only.
 
-**Descubrimiento HTTP:** `GET /api/engines` devuelve `integration.argvJsonEnvKey`
-e `integration.engineIdEnvSuffix`. El vocabulario de cada CLI sigue en los
-comentarios del adaptador / `--help` del binario.
-
----
-
-## 11. Cancelación, timeouts y ciclo de vida
-
-| Tema | Comportamiento |
-|------|----------------|
-| **Timeout** | `AGENT_DAEMON_TIMEOUT_MS` por turno. |
-| **Cancelación HTTP** | Abortar el `fetch` corta el request; el motor recibe `AbortSignal`. |
-| **Subprocesos** | Reciben SIGTERM y luego SIGKILL en timeout (implementación en `spawn-helpers`). |
-
-Tu producto debe:
-
-- Mostrar progreso mientras el stream está abierto.
-- Liberar UI al cerrar el stream o al recibir `error` / `done`.
+**HTTP discovery:** `GET /api/engines` returns `integration.argvJsonEnvKey` and
+`integration.engineIdEnvSuffix`. Per-CLI vocabulary remains in adapter comments /
+binary `--help`.
 
 ---
 
-## 12. Errores y códigos HTTP
+## 11. Cancellation, timeouts, and lifecycle
 
-| Situación | HTTP | Cuerpo |
-|-----------|------|--------|
-| Motor desconocido | `404` | `{ "error": "Unknown engine: …" }` |
-| Motor marcado no disponible | `400` | `{ "error": "Engine unavailable: …" }` |
-| JSON inválido | `400` | `{ "error": "Invalid JSON body" }` |
-| Validación | `400` | `{ "error": <Zod flatten> }` |
-| Error en motor durante SSE | `200` | evento SSE `type: "error"` |
+| Topic | Behavior |
+|-------|----------|
+| **Timeout** | `AGENT_DAEMON_TIMEOUT_MS` per turn. |
+| **HTTP cancel** | Aborting `fetch` ends the request; engine gets `AbortSignal`. |
+| **Subprocesses** | SIGTERM then SIGKILL on timeout (see `spawn-helpers`). |
 
-Distingue **errores de transporte** (red) de **errores de aplicación** (JSON en
-4xx vs SSE `error`).
+Your product should:
 
----
-
-## 13. Seguridad y despliegue
-
-1. **Bind:** por defecto `127.0.0.1` — limita acceso a procesos locales.
-2. **Sin autenticación en el MVP:** cualquier proceso local que alcance el
-   puerto puede invocar chat. En producto, añade:
-   - token compartido en cabecera (validación en middleware Hono),
-   - o socket Unix + permisos,
-   - o mTLS.
-3. **No ejecutes el daemon como root** salvo que sea imprescindible.
-4. **Mensajes (`message`)** pueden contener inyección hacia el CLI; trata el
-   daemon como **capa privilegiada** que ejecuta código en la máquina del
-   usuario y valida políticas en tu producto antes de enviar.
+- Show progress while the stream is open.
+- Release UI when the stream closes or on `error` / `done`.
 
 ---
 
-## 14. Patrones de despliegue
+## 12. Errors and HTTP status codes
 
-| Patrón | Descripción |
-|--------|-------------|
-| **Sidecar local** | Tu app de escritorio o script arranca el daemon junto a la UI. |
-| **Servicio de usuario** | Instalador registra un `launchd` / systemd user unit que levanta el daemon al login. |
-| **Solo desarrollo** | Vite + proxy, como en `web/`. |
-| **Contenedor** | Monta `AGENT_DAEMON_CWD` como volumen del repo del usuario; expón solo loopback al host. |
+| Situation | HTTP | Body |
+|-----------|------|------|
+| Unknown engine | `404` | `{ "error": "Unknown engine: …" }` |
+| Engine marked unavailable | `400` | `{ "error": "Engine unavailable: …" }` |
+| Invalid JSON | `400` | `{ "error": "Invalid JSON body" }` |
+| Validation | `400` | `{ "error": <Zod flatten> }` |
+| Error during SSE | `200` | SSE event `type: "error"` |
+
+Distinguish **transport errors** (network) from **application errors** (JSON 4xx
+vs SSE `error`).
 
 ---
 
-## 15. Extender CORS y configuración avanzada
+## 13. Security and deployment
 
-Hoy la lista CORS está en `daemon/src/index.ts`:
+1. **Bind:** default `127.0.0.1` — limits access to local processes.
+2. **No auth in MVP:** any local process reaching the port can invoke chat. For
+   products, add:
+   - shared token in header (validate in Hono middleware),
+   - or Unix socket + permissions,
+   - or mTLS.
+3. **Do not run the daemon as root** unless unavoidable.
+4. **`message` content** may inject into the CLI; treat the daemon as a
+   **privileged layer** running code on the user machine and validate policies in
+   your product before sending.
+
+---
+
+## 14. Deployment patterns
+
+| Pattern | Description |
+|---------|-------------|
+| **Local sidecar** | Desktop app or script starts daemon next to UI. |
+| **User service** | Installer registers `launchd` / systemd user unit at login. |
+| **Dev only** | Vite + proxy, as in `web/`. |
+| **Container** | Mount `AGENT_DAEMON_CWD` as user repo volume; expose loopback only to host. |
+
+---
+
+## 15. Extending CORS and advanced configuration
+
+CORS list is currently in `daemon/src/index.ts`:
 
 ```ts
 cors({
@@ -529,90 +523,88 @@ cors({
 })
 ```
 
-Para un origen nuevo:
+For a new origin:
 
-1. Añade la URL exacta (esquema + host + puerto).
-2. O sustituye por una función que lea `process.env.AGENT_DAEMON_CORS_ORIGINS`
-   (mejora futura recomendada).
-
----
-
-## 16. Resolución de problemas
-
-| Síntoma | Qué revisar |
-|---------|-------------|
-| `ECONNREFUSED` | ¿Daemon arrancado? ¿Puerto correcto? |
-| CORS en browser | Proxy mismo origen o ampliar CORS (§15). |
-| `404` en chat | Typo en `engineId`; refresca catálogo con `GET /api/engines`. |
-| `400` Engine unavailable | El binario no está en `PATH` o motor deshabilitado. |
-| Solo `error` con `exit 1` | Revisa stderr del CLI (cuotas, auth); el parser SSE no sustituye al login del proveedor. |
-| Chat muy lento | Timeout alto; revisa red o modelo del CLI. |
+1. Add the exact URL (scheme + host + port).
+2. Or replace with a function reading `process.env.AGENT_DAEMON_CORS_ORIGINS`
+   (recommended future improvement).
 
 ---
 
-## 17. CLI consola (`adf` / `agent-daemon-tty`)
+## 16. Troubleshooting
 
-Paquete **`cli/`** del monorepo: cliente **solo HTTP** (misma API que la web).
-No importa motores ni el código interno del daemon. El binario principal es
-**`adf`**; **`agent-daemon-tty`** es un alias del mismo ejecutable (compatibilidad).
+| Symptom | What to check |
+|---------|---------------|
+| `ECONNREFUSED` | Daemon running? Correct port? |
+| Browser CORS | Same-origin proxy or extend CORS ([§15](#15-extending-cors-and-advanced-configuration)). |
+| `404` on chat | Typo in `engineId`; refresh catalog with `GET /api/engines`. |
+| `400` Engine unavailable | Binary not on `PATH` or engine disabled. |
+| Only `error` with `exit 1` | Check CLI stderr (quotas, auth); SSE parser does not replace vendor login. |
+| Very slow chat | High timeout; check network or CLI model. |
 
-### 17.1. Instalación
+---
 
-Tras `npm install` en `agent-deamon-framework/`, los binarios quedan en
-`node_modules/.bin/adf` y `node_modules/.bin/agent-daemon-tty`.
+## 17. Console CLI (adf and agent-daemon-tty)
 
-Instalación **global** desde el clon (compila `cli/` y ejecuta
-`npm install -g ./cli`):
+Monorepo **`cli/`** package: **HTTP-only** client (same API as web). It does not
+import engines or daemon internals. Main binary **`adf`**; **`agent-daemon-tty`**
+is an alias (compatibility).
+
+### 17.1. Installation
+
+After `npm install` in `agent-deamon-framework/`, binaries are at
+`node_modules/.bin/adf` and `node_modules/.bin/agent-daemon-tty`.
+
+**Global** install from clone (builds `cli/` and runs `npm install -g ./cli`):
 
 ```bash
 npm run install:cli
 ```
 
-Para que `adf run daemon` y `adf run web` encuentren el monorepo, la CLI resuelve
-la raíz (carpetas `daemon/` y `web/`) en este orden: variable de entorno
-**`ADF_FRAMEWORK_ROOT`**, subida desde el directorio actual de trabajo, subida
-desde la ruta del ejecutable instalado. Si usas `-g` y trabajas fuera del clon,
-define `ADF_FRAMEWORK_ROOT` con la ruta absoluta al repositorio. Ver README y
-`docs/USER_GUIDE.md`.
+For `adf run daemon` and `adf run web` to find the monorepo, the CLI resolves
+root (`daemon/` and `web/`) in this order: env **`ADF_FRAMEWORK_ROOT`**, walk
+up from cwd, walk up from installed executable path. With `-g` and working
+outside the clone, set `ADF_FRAMEWORK_ROOT` to the absolute repo path. See README
+and `docs/USER_GUIDE.md`.
 
-### 17.2. Comandos (`adf`)
+### 17.2. Commands (`adf`)
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| `adf run daemon` | Arranca el daemon en **primer plano** (logs en consola; `npm run dev` del workspace `daemon`). |
-| `adf run web` | Arranca la demo web (Vite) en primer plano. |
-| `adf stop` | Detiene procesos que escuchan en `AGENT_DAEMON_PORT` y `ADF_WEB_PORT` (por defecto 8787 y 5173): SIGTERM y, si siguen vivos, SIGKILL. |
-| `adf chat` | Solo REPL; exige daemon ya escuchando. |
+| `adf run daemon` | Starts daemon **foreground** (console logs; `npm run dev` for `daemon` workspace). |
+| `adf run web` | Starts web demo (Vite) foreground. |
+| `adf stop` | Stops processes listening on `AGENT_DAEMON_PORT` and `ADF_WEB_PORT` (defaults 8787 and 5173): SIGTERM then SIGKILL if needed. |
+| `adf chat` | REPL only; daemon must already be listening. |
 
-### 17.3. Comandos (`agent-daemon-tty`, alias)
+### 17.3. Commands (`agent-daemon-tty`, alias)
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| `agent-daemon-tty` o `… up` | Si `/api/health` falla, arranca el daemon en **segundo plano** (`npm run dev` en `daemon/`) y abre el chat. |
-| `agent-daemon-tty chat` | Igual que `adf chat`. |
-| `agent-daemon-tty serve` | Igual que `adf run daemon`. |
+| `agent-daemon-tty` or `… up` | If `/api/health` fails, starts daemon **background** (`npm run dev` in `daemon/`) then opens chat. |
+| `agent-daemon-tty chat` | Same as `adf chat`. |
+| `agent-daemon-tty serve` | Same as `adf run daemon`. |
 
-Opciones (válidas para `adf chat` y para `agent-daemon-tty`):
+Options (valid for `adf chat` and `agent-daemon-tty`):
 
-- `--url <base>` — base del daemon (por defecto `AGENT_DAEMON_URL` o
+- `--url <base>` — daemon base (default `AGENT_DAEMON_URL` or
   `http://127.0.0.1:8787`).
-- `--engine <id>` — motor inicial si está disponible.
+- `--engine <id>` — initial engine if available.
 
-El subproceso del daemon **hereda** `process.env` (incl. `AGENT_DAEMON_PORT`,
+Daemon subprocess **inherits** `process.env` (incl. `AGENT_DAEMON_PORT`,
 `AGENT_DAEMON_HOST`, `AGENT_DAEMON_CWD`).
 
-### 17.4. Atajos dentro del REPL
+### 17.4. REPL shortcuts
 
-| Entrada | Acción |
-|---------|--------|
-| `/engines`, `/refresh` | Vuelve a llamar `GET /api/engines`. |
-| `/engine <id>` o `/use <id>` | Cambia el motor activo (solo si `available`). |
-| `/quit` | Sale. |
-| `?`, `/help` | Ayuda. |
-| *otro texto* | `POST /api/chat` con streaming SSE a stdout. |
-| **Ctrl+C** | Aborta la petición en curso. |
+| Input | Action |
+|-------|--------|
+| `/engines`, `/refresh` | Call `GET /api/engines` again. |
+| `/engine <id>` or `/use <id>` | Switch active engine (only if `available`). |
+| `/quit` | Exit. |
+| `?`, `/help` | Help. |
+| *other text* | `POST /api/chat` with SSE to stdout. |
+| **Ctrl+C** | Abort current request. |
 
-### 17.5. Desde npm en la raíz del monorepo
+### 17.5. From npm at monorepo root
 
 ```bash
 npx adf chat
@@ -620,9 +612,9 @@ npx adf chat
 
 ---
 
-## 18. Apéndice: cliente mínimo en TypeScript
+## 18. Appendix: minimal TypeScript client
 
-Parser SSE incremental mínimo (mismo enfoque que la demo `web/`):
+Minimal incremental SSE parser (same approach as `web/` demo):
 
 ```typescript
 type StreamEvent =
@@ -677,13 +669,13 @@ export async function chatStream(
 }
 ```
 
-Uso:
+Usage:
 
 ```typescript
 await chatStream(
   "http://127.0.0.1:8787",
   "claude",
-  "hola",
+  "hello",
   (ev) => console.log(ev),
   AbortSignal.timeout(30_000),
 );
@@ -691,14 +683,14 @@ await chatStream(
 
 ---
 
-## Resumen ejecutivo
+## Executive summary
 
-1. Arranca el daemon y valida `GET /api/health` y `GET /api/engines`.
-2. Elige `engineId` con `available: true`.
-3. Llama `POST /api/chat` con JSON; lee **SSE** hasta `done` o `error`.
-4. En browser, **proxifica** `/api` o amplía CORS.
-5. Trata el daemon como **superficie sensible**: loopback, auth y políticas
-   son responsabilidad de tu producto en entornos reales.
+1. Start the daemon and validate `GET /api/health` and `GET /api/engines`.
+2. Pick `engineId` with `available: true`.
+3. Call `POST /api/chat` with JSON; read **SSE** until `done` or `error`.
+4. In the browser, **proxy** `/api` or extend CORS.
+5. Treat the daemon as a **sensitive surface**: loopback, auth, and policies
+   are your product’s responsibility in real environments.
 
-Para la demo visual y proxy de referencia, revisa el paquete `web/`; para TTY,
-el paquete `cli/` del mismo monorepo.
+For the visual demo and reference proxy, see `web/`; for TTY, see `cli/` in the
+same monorepo.

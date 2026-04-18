@@ -8,7 +8,7 @@ tools such as Claude Code, Codex, Cursor Agent, OpenCode, Pi, Qwen). A **React**
 demo UI and a small **`adf` CLI** speak to the same API—nothing executes engine
 binaries except the daemon.
 
-**Documentation (Spanish):** full guides live under [`docs/`](docs/README.md)
+**Documentation:** full guides live under [`docs/`](docs/README.md)
 (quick start, user guide, integration, architecture).
 
 ---
@@ -110,7 +110,7 @@ Smoke check (needs `jq`; daemon must be up):
 npm run smoke
 ```
 
-More detail: **[docs/QUICKSTART.md](docs/QUICKSTART.md)** (Spanish),
+More detail: **[docs/QUICKSTART.md](docs/QUICKSTART.md)**,
 **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**.
 
 ---
@@ -220,7 +220,7 @@ agent-deamon-framework/
 ├── daemon/     # Hono server, engines, SSE
 ├── web/        # Vite + React UI
 ├── cli/        # npm package: adf, agent-daemon-tty
-├── docs/       # User & integration guides (Spanish)
+├── docs/       # User & integration guides
 ├── scripts/    # smoke.sh, install-cli.sh
 └── openspec/   # OpenSpec change proposals
 ```

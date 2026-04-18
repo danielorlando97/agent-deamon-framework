@@ -1,87 +1,86 @@
-# Guía de usuario — Agent daemon framework
+# User guide — Agent daemon framework
 
-Esta guía está pensada para **quien quiere usar** el proyecto en su máquina:
-interfaz web, chat en terminal o comprobaciones rápidas. No hace falta leer
-código.
-
----
-
-## 1. ¿Qué es esto?
-
-Es un **programa local** (el *daemon*) que:
-
-- Escucha en tu ordenador (por defecto `http://127.0.0.1:8787`).
-- Ofrece una lista de **motores** (engines): unos de demostración y otros que
-  ejecutan herramientas de línea de órdenes que ya tengas instaladas (Claude
-  Code, Codex, etc.), **si están en el PATH** y configuradas.
-- Cuando envías un mensaje, el daemon **orquesta** el motor elegido y te
-  devuelve la respuesta **en streaming** (trozo a trozo), igual en la web que
-  en la terminal.
-
-**Importante:** no sustituye a las cuentas ni licencias de cada herramienta. Si
-Codex u otro motor dice que no hay cuota o falta autenticación, eso depende del
-proveedor, no de este proyecto.
+This guide is for **people who want to use** the project on their machine: web
+UI, terminal chat, or quick checks. You do not need to read code.
 
 ---
 
-## 2. Requisitos
+## 1. What is this?
 
-- **Node.js 20 o superior** ([nodejs.org](https://nodejs.org)).
-- Terminal (macOS, Linux o WSL en Windows).
-- Opcional: **navegador** moderno para la demo web.
+It is a **local program** (the *daemon*) that:
+
+- Listens on your machine (by default `http://127.0.0.1:8787`).
+- Offers a list of **engines**: demo engines and engines that run command-line
+  tools you already have installed (Claude Code, Codex, etc.), **if they are on
+  PATH** and configured.
+- When you send a message, the daemon **orchestrates** the chosen engine and
+  returns the response **in streaming** (chunk by chunk), same in the browser
+  and in the terminal.
+
+**Important:** it does not replace vendor accounts or licenses. If Codex or
+another engine reports no quota or missing authentication, that depends on the
+vendor, not this project.
 
 ---
 
-## 3. Instalación (una sola vez por carpeta)
+## 2. Requirements
 
-1. Abre una terminal.
-2. Ve al directorio del proyecto:
+- **Node.js 20 or newer** ([nodejs.org](https://nodejs.org)).
+- Terminal (macOS, Linux, or WSL on Windows).
+- Optional: modern **browser** for the web demo.
+
+---
+
+## 3. Installation (once per folder)
+
+1. Open a terminal.
+2. Go to the project directory:
 
    ```bash
-   cd ruta/al/agent-deamon-framework
+   cd path/to/agent-deamon-framework
    ```
 
-3. Instala dependencias:
+3. Install dependencies:
 
    ```bash
    npm install
    ```
 
-Si esto falla, comprueba la versión de Node (`node -v`).
+If this fails, check your Node version (`node -v`).
 
-### 3.1 Comando `adf` en el PATH (opcional)
+### 3.1 `adf` command on PATH (optional)
 
-Después de `npm install` puedes instalar la CLI globalmente **desde el propio
-clon** (no hace falta publicar el paquete en npm):
+After `npm install` you can install the CLI globally **from this clone** (no
+need to publish the package to npm):
 
 ```bash
 npm run install:cli
 ```
 
-Así podrás escribir **`adf`** en cualquier terminal. Para que encuentre el
-monorepo al usar `adf run daemon` / `adf run web`, haz **una** de estas cosas:
+Then you can type **`adf`** in any terminal. For `adf run daemon` / `adf run
+web` to find the monorepo, do **one** of the following:
 
-- Ejecutar `adf` con el directorio actual **dentro del clon** (subcarpetas
-  valen; se busca hacia arriba hasta la raíz con `daemon/` y `web/`).
-- O exportar la ruta a la raíz del repositorio:
+- Run `adf` with the current directory **inside the clone** (subfolders count;
+  the CLI walks up until it finds `daemon/` and `web/`).
+- Or export the path to the repository root:
 
   ```bash
-  export ADF_FRAMEWORK_ROOT=/ruta/absoluta/al/agent-deamon-framework
+  export ADF_FRAMEWORK_ROOT=/absolute/path/to/agent-deamon-framework
   ```
 
-Para quitar la instalación global:
+To remove the global install:
 
 ```bash
 npm run unlink:cli
 ```
 
-Detalle en inglés en el [README.md](../README.md) de la raíz.
+More detail in the root [README.md](../README.md).
 
 ---
 
-## 4. Arrancar la interfaz web (recomendado para empezar)
+## 4. Start the web UI (recommended to begin)
 
-En la misma carpeta del proyecto abre **dos** terminales:
+In the project folder, open **two** terminals:
 
 **Terminal 1 — daemon (API):**
 
@@ -95,150 +94,146 @@ adf run daemon
 adf run web
 ```
 
-Servicios habituales:
+Typical endpoints:
 
-| Qué | Dirección habitual |
-|-----|---------------------|
-| **Web** (chat visual) | [http://localhost:5173](http://localhost:5173) |
-| **Daemon** (API) | `http://127.0.0.1:8787` (la web hace proxy de `/api` al mismo host/puerto que uses en `AGENT_DAEMON_*`) |
+| What | Typical URL |
+|------|-------------|
+| **Web** (visual chat) | [http://localhost:5173](http://localhost:5173) |
+| **Daemon** (API) | `http://127.0.0.1:8787` (the web app proxies `/api` to the same host/port you set in `AGENT_DAEMON_*`) |
 
-Abre el enlace de la web en el navegador. Verás:
+Open the web URL in your browser. You will see:
 
-- Un **panel de motores** a la izquierda: los que tienen estado “ready” se
-  pueden usar; “absent” o deshabilitados no.
-- Un **área de chat** y abajo un campo para escribir y enviar.
+- An **engine panel** on the left: engines marked “ready” can be used;
+  “absent” or disabled ones cannot.
+- A **chat area** and a field at the bottom to type and send.
 
-**Consejo:** usa `localhost` en el navegador tal como indica Vite; evita
-mezclar `127.0.0.1` y `localhost` si ves avisos de cookies o CORS en otros
-montajes.
+**Tip:** use `localhost` in the browser as Vite suggests; avoid mixing
+`127.0.0.1` and `localhost` if you see cookie or CORS warnings in other
+setups.
 
-Para **parar** cada servicio: en su terminal, pulsa `Ctrl+C`.
+To **stop** each service: press `Ctrl+C` in its terminal.
 
 ---
 
-## 5. Arrancar solo el chat en terminal (CLI)
+## 5. Terminal-only chat (CLI)
 
-La CLI principal se llama **`adf`** (y el binario legacy **`agent-daemon-tty`**
-apunta al mismo programa). Habla **solo** con el daemon por red (la misma API
-que la web). Primero el daemon debe estar en marcha (por ejemplo con
-`adf run daemon`).
+The main CLI is **`adf`** (legacy binary **`agent-daemon-tty`** points to the
+same program). It talks **only** to the daemon over the network (same API as
+the web). The daemon must be running first (e.g. `adf run daemon`).
 
-### 5.1. Si ya tienes el daemon corriendo
+### 5.1. If the daemon is already running
 
 ```bash
 adf chat
 ```
 
-Verás un banner y un prompt `>`. Escribe tu mensaje y pulsa **Enter**.
+You will see a banner and a `>` prompt. Type your message and press **Enter**.
 
-### 5.2. Si quieres que el binario legacy levante el daemon solo
+### 5.2. If you want the legacy binary to start the daemon by itself
 
 ```bash
 npx agent-daemon-tty
 ```
 
-Si no hay respuesta en el puerto configurado, intentará arrancar el daemon en
-segundo plano y luego abrir el chat. Con **`adf`** usa `adf run daemon` en otra
-terminal y luego `adf chat`.
+If nothing responds on the configured port, it will try to start the daemon in
+the background and then open chat. With **`adf`**, use `adf run daemon` in
+another terminal, then `adf chat`.
 
-### 5.3. Ver solo los logs del daemon (avanzado)
+### 5.3. Watch daemon logs only (advanced)
 
 ```bash
 adf run daemon
 ```
 
-Aquí el daemon ocupa la terminal; abre **otra** terminal para `adf chat` si
-quieres probar los dos a la vez.
+Here the daemon owns the terminal; open **another** terminal for `adf chat` if
+you want both.
 
-### 5.4. Comandos dentro de la CLI
+### 5.4. Commands inside the CLI
 
-| Escribes… | Efecto |
+| You type… | Effect |
 |-----------|--------|
-| `/engines` o `/refresh` | Vuelve a cargar la lista de motores. |
-| `/engine <id>` (o `/use <id>`) | Cambia al motor indicado (si está disponible). |
-| `/quit` o `/q` | Sale de la CLI. |
-| `?` o `/help` | Muestra ayuda corta. |
-| **Ctrl+C** | Interrumpe la respuesta que se está generando. |
+| `/engines` or `/refresh` | Reload the engine list. |
+| `/engine <id>` (or `/use <id>`) | Switch to the given engine (if available). |
+| `/quit` or `/q` | Exit the CLI. |
+| `?` or `/help` | Short help. |
+| **Ctrl+C** | Abort the response being generated. |
 
 ---
 
-## 6. Motores (engines): qué significa cada uno
+## 6. Engines: what each one means
 
-En la lista verás identificadores (`id`). Lista completa y orden del registro:
-[QUICKSTART.md §4 — Motores](QUICKSTART.md#4-motores-engineid). Resumen:
+In the list you will see identifiers (`id`). Full list and registry order:
+[QUICKSTART.md §4 — Engines](QUICKSTART.md#4-engines-engineid). Summary:
 
-| Motor | Para qué sirve |
-|-------|----------------|
-| **claude**, **codex**, **cursor_agent**, **opencode**, **pi**, **qwen** | Solo aparecen como listos si el comando existe en tu sistema (`command -v`). Requieren que **tú** hayas hecho login o configuración según cada herramienta. |
+| Engine | Purpose |
+|--------|---------|
+| **claude**, **codex**, **cursor_agent**, **opencode**, **pi**, **qwen** | Only show as ready if the command exists on your system (`command -v`). You must **log in or configure** each tool yourself. |
 
-Si un motor aparece como no disponible, instala o configura esa herramienta y
-reinicia el daemon o pulsa refrescar en la web / `/refresh` en la CLI.
+If an engine is unavailable, install or configure that tool and restart the
+daemon or refresh in the web UI / `/refresh` in the CLI.
 
 ---
 
-## 7. Variables de entorno (uso habitual)
+## 7. Environment variables (common)
 
-Puedes definirlas **antes** de `adf run daemon`, `adf run web`, `adf chat`, etc.:
+You can set these **before** `adf run daemon`, `adf run web`, `adf chat`, etc.:
 
-| Variable | Para qué |
-|----------|----------|
-| `AGENT_DAEMON_PORT` | Puerto del daemon (por defecto `8787`). |
-| `AGENT_DAEMON_HOST` | Interfaz de escucha (por defecto `127.0.0.1`). |
-| `AGENT_DAEMON_CWD` | Carpeta de trabajo donde los CLIs abren archivos (por defecto, donde arrancaste el proceso). |
-| `AGENT_DAEMON_TIMEOUT_MS` | Tiempo máximo de una respuesta larga (motores reales). |
-| `AGENT_DAEMON_URL` | URL base que usa la CLI (por defecto `http://127.0.0.1:8787`). |
-| `ADF_FRAMEWORK_ROOT` | Raíz del monorepo (con `daemon/` y `web/`). Útil si instalaste `adf` con `npm install -g` y ejecutas comandos fuera del clon. |
+| Variable | Purpose |
+|----------|---------|
+| `AGENT_DAEMON_PORT` | Daemon port (default `8787`). |
+| `AGENT_DAEMON_HOST` | Bind address (default `127.0.0.1`). |
+| `AGENT_DAEMON_CWD` | Working directory where CLIs open files (default: where you started the process). |
+| `AGENT_DAEMON_TIMEOUT_MS` | Max time for a long response (real engines). |
+| `AGENT_DAEMON_URL` | Base URL used by the CLI (default `http://127.0.0.1:8787`). |
+| `ADF_FRAMEWORK_ROOT` | Monorepo root (with `daemon/` and `web/`). Useful if you installed `adf` with `npm install -g` and run commands outside the clone. |
 
-Ejemplo: usar el puerto 8877 **tanto** al arrancar el daemon, el proxy de Vite
-y la CLI:
+Example: use port 8877 for **both** daemon startup, Vite proxy, and CLI:
 
 ```bash
 export AGENT_DAEMON_PORT=8877
 export AGENT_DAEMON_URL=http://127.0.0.1:8877
 adf run daemon
-# otra terminal: AGENT_DAEMON_PORT=8877 adf run web
-# otra terminal: adf chat
+# other terminal: AGENT_DAEMON_PORT=8877 adf run web
+# other terminal: adf chat
 ```
 
 ---
 
-## 8. Problemas frecuentes (FAQ)
+## 8. Troubleshooting (FAQ)
 
-**No carga la web o dice que no puede conectar con la API.**  
-Comprueba que el daemon esté levantado y que el proxy de Vite apunte al mismo
-puerto (`web/vite.config.ts`). Prueba en terminal:
-`curl http://127.0.0.1:8787/api/health` — debería responder `{"ok":true}`.
+**The web UI does not load or cannot reach the API.**  
+Make sure the daemon is running and Vite proxies to the same port (`web/vite.config.ts`). Try in the terminal:
+`curl http://127.0.0.1:8787/api/health` — it should return `{"ok":true}`.
 
-**Todos los motores aparecen “Offline” / la CLI dice que el motor no está
-disponible.**  
-Ya no hay motores demo: hace falta tener **al menos un** CLI del listado
-(`claude`, `codex`, etc.) en el `PATH`. Comprueba con `GET /api/engines` o
-`/engines` en la CLI.
+**All engines show “Offline” / CLI says engine unavailable.**  
+There are no demo engines anymore: you need **at least one** CLI from the list
+(`claude`, `codex`, etc.) on `PATH`. Check with `GET /api/engines` or `/engines`
+in the CLI.
 
-**Un motor “real” falla o dice límite de uso.**  
-Eso viene del proveedor (OpenAI, Anthropic, etc.). Revisa cuentas, planes y
-login del CLI correspondiente **fuera** de este proyecto.
+**A “real” engine fails or reports usage limits.**  
+That comes from the provider (OpenAI, Anthropic, etc.). Check accounts, plans,
+and CLI login **outside** this project.
 
-**La CLI dice que no hay “carrier”.**  
-El daemon no está escuchando. Arranca `adf run daemon` en otra terminal.
+**The CLI says there is no “carrier”.**  
+The daemon is not listening. Start `adf run daemon` in another terminal.
 
-**Puerto en uso (`EADDRINUSE`).**  
-Otro programa (u otra copia del daemon) usa ese puerto. Cambia `AGENT_DAEMON_PORT`
-o cierra el otro proceso.
+**Port in use (`EADDRINUSE`).**  
+Another program (or another daemon) is using that port. Change `AGENT_DAEMON_PORT`
+or stop the other process.
 
 ---
 
-## 9. Seguridad (lectura rápida)
+## 9. Security (quick read)
 
-Por defecto el daemon escucha en **solo tu máquina** (loopback). No está
-pensado para exponerlo a Internet sin autenticación fuerte, firewall y TLS. Trata
-los mensajes que envías como **capaces de ejecutar acciones** en tu entorno si
-el motor usa herramientas con acceso al disco.
+By default the daemon listens on **your machine only** (loopback). It is not
+meant to be exposed to the internet without strong authentication, firewall, and
+TLS. Treat messages you send as **able to trigger actions** in your environment
+if the engine uses tools with disk access.
 
 ---
 
-## 10. Dónde seguir
+## 10. Where to go next
 
-- **Integrar** este daemon en tu propia aplicación: [INTEGRATION.md](INTEGRATION.md).
-- **Arquitectura y código:** [TECHNICAL.md](TECHNICAL.md).
-- **Inicio rápido en inglés:** [README.md](../README.md) en la raíz del monorepo.
+- **Integrate** this daemon in your own app: [INTEGRATION.md](INTEGRATION.md).
+- **Architecture and code:** [TECHNICAL.md](TECHNICAL.md).
+- **Quick start at repo root:** [README.md](../README.md).

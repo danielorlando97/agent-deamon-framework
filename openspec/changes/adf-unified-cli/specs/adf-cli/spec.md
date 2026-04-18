@@ -65,7 +65,7 @@ the user ends the session.
 
 ### Requirement: Documentation prefers adf
 
-The repository’s primary English user-facing entry (`README.md`) and Spanish
+The repository’s primary English user-facing entry (`README.md`) and English
 user guide SHALL document **`adf run daemon`**, **`adf run web`**, and
 **`adf chat`** as the recommended commands, with prior `npm`-only examples
 updated or demoted to secondary notes where they duplicate this flow.
